@@ -4,41 +4,129 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <title>Hello, World!</title>
+    <title>Github CodeQuery</title>
 </head>
 <body>
-    <div class="container-md p-5">
-        <form id="repoForm" method="POST" action="/fetch-repo">
-            <div class="mb-3">
-                <label for="linkInput" class="form-label">Enter Github Project Link (must be public)</label>
-                <input type="url" class="form-control" id="linkInput" name="repoURL" placeholder="https://public-github-repo.com" required>
-                <br/>
-                <button type="submit" class="btn btn-primary">Fetch Repo</button>
-            </div>
-        </form>        
-    </div>
-    <div class="container-md p-5">
-        <select id="promptSelect" class="form-select" aria-label="Default select example" onchange="showCustomPrompt()">
-            <option selected>Select prompt or "custom prompt" to use your own</option>
-            <option value="1">Prompt One</option>
-            <option value="2">Prompt Two</option>
-            <option value="3">Custom Prompt</option>
-        </select>
-        <div id="customPromptDiv" class="mt-3" style="display: none;">
-            <textarea id="customPromptTextarea" class="form-control" rows="3" placeholder="Enter your custom prompt here..."></textarea>
+    <div class="p-5">
+        <br/>
+        <br/>
+        <div class="container-md">
+            <form id="repoForm" method="POST" action="/fetch-repo">
+                <div class="mb-3">
+                    <label for="linkInput" class="form-label">Enter Github Project Link (must be public)</label>
+                    <input type="url" class="form-control" id="linkInput" name="repoURL" placeholder="https://public-github-repo.com" required>
+                    <br/>
+                    <button type="submit" class="btn btn-primary">Fetch Repo</button>
+                </div>
+            </form>        
         </div>
+        <div class="container-md">
+            <form id="promptForm" method="POST" action="javascript:void(0);" onsubmit="submitPrompt()">
+                <select id="promptSelect" class="form-select" aria-label="Default select example" onchange="showCustomPrompt()">
+                    <option selected>Select prompt or "custom prompt" to use your own</option>
+                    <!-- Options will be dynamically generated -->
+                </select>
+                <div id="customPromptDiv" class="mt-3" style="display: none;">
+                    <textarea id="customPromptTextarea" class="form-control" rows="3" placeholder="Enter your custom prompt here..."></textarea>
+                </div>
+                <input type="hidden" id="queryVector" name="queryVector">
+                <br/>
+                <button type="submit" class="btn btn-primary">Submit Prompt</button>
+            </form>
+        </div>
+        <!-- Chatbot body -->
+        <div class="container mt-5">
+            <div class="card">
+                <div class="card-header">
+                    Chatbot
+                </div>
+                <div class="card-body" id="chatBody" style="height: 300px; overflow-y: scroll;">
+                    <!-- Chat messages will go here -->
+                </div>
+            </div>
+        </div>
+        <br/>
+        <br/>
+        <br/>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
         function showCustomPrompt() {
             var selectElement = document.getElementById('promptSelect');
             var customPromptDiv = document.getElementById('customPromptDiv');
-            if (selectElement.value == '3') {
+            if (selectElement.value == 'Custom Prompt') {
                 customPromptDiv.style.display = 'block';
             } else {
                 customPromptDiv.style.display = 'none';
             }
         }
+
+        function setQueryVector() {
+            var selectElement = document.getElementById('promptSelect');
+            var customPromptTextarea = document.getElementById('customPromptTextarea');
+            var queryVectorInput = document.getElementById('queryVector');
+
+            if (selectElement.value == 'Custom Prompt') {
+                queryVectorInput.value = customPromptTextarea.value;
+            } else {
+                queryVectorInput.value = selectElement.value;
+            }
+        }
+
+        function submitPrompt() {
+            setQueryVector();
+            var queryVector = document.getElementById('queryVector').value;
+
+            fetch('/query-vector', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({
+                    queryVector: queryVector
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                var chatBody = document.getElementById('chatBody');
+                chatBody.innerHTML = ''; // Clear previous messages
+                if (data.results) {
+                    for (const [key, value] of Object.entries(data.results)) {
+                        var messageElement = document.createElement('div');
+                        messageElement.className = 'mb-2';
+                        messageElement.innerHTML = `<strong>${key}:</strong> ${value}`;
+                        chatBody.appendChild(messageElement);
+                    }
+                } else if (data.error) {
+                    var errorElement = document.createElement('div');
+                    errorElement.className = 'mb-2 text-danger';
+                    errorElement.textContent = `Error: ${data.error}`;
+                    chatBody.appendChild(errorElement);
+                }
+                chatBody.scrollTop = chatBody.scrollHeight;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Populate the select element with prompts from the backend
+        document.addEventListener('DOMContentLoaded', function() {
+            var prompts = {{ suggestions | tojson }};
+            var selectElement = document.getElementById('promptSelect');
+            prompts.forEach(function(prompt) {
+                var option = document.createElement('option');
+                option.value = prompt;
+                option.textContent = prompt;
+                selectElement.appendChild(option);
+            });
+
+            // Add custom prompt option explicitly
+            var customOption = document.createElement('option');
+            customOption.value = 'Custom Prompt';
+            customOption.textContent = 'Custom Prompt';
+            selectElement.appendChild(customOption);
+        });
     </script>
 </body>
 </html>

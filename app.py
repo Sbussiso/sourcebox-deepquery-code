@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from git import Repo
 import shutil
 import os
 import logging
+from vector import project_to_vector
 from dotenv import load_dotenv
+from vector import project_to_vector
+from prompt_suggestions import generate_suggestions
 
 load_dotenv()
 
@@ -15,7 +18,9 @@ app = Flask(__name__)
 
 @app.route('/')
 def hello():
-    return render_template('index.html')
+    prompt = "generate 5 coding prompts as a user asking about their own existing codebase"
+    suggestions = generate_suggestions(prompt)
+    return render_template('index.html', suggestions=suggestions)
 
 
 @app.route('/fetch-repo', methods=['POST'])
@@ -50,7 +55,11 @@ def fetch_repo():
             return "Failed to fetch repository", 500
         
         logging.debug("pulled repo from github")
-        return "Repository successfully fetched", 200
+
+        #vectorize the repo in repofetch and send to deep lake
+        project_to_vector()
+
+        return "Repository successfully fetched and data laked", 200
 
         
 
@@ -67,6 +76,22 @@ def clear_repo():
         logging.debug(f"Directory 'repofetch' deleted")
     else:
         logging.debug(f"The directory '{directory_path}' does not exist. No folder to delete")
+
+
+@app.route('/query-vector', methods=['POST'])
+def query_vector():
+    db = project_to_vector()
+
+    query = request.form.get("queryVector")
+    try:
+        docs = db.similarity_search(query)
+        results = {}
+        for i, doc in enumerate(docs):
+            results[f"Document {i+1}"] = doc.page_content
+        return jsonify({"results": results})
+    except Exception as e:
+        print(f"Error during similarity search: {e}")
+        return jsonify({"error": str(e)})
         
 
 
