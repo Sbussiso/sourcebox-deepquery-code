@@ -9,7 +9,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def generate_suggestions(prompt):
     if prompt == None:
-        default_prompt = "generate 5 coding prompts for users working on a project"
+        default_prompt = "generate 5 coding prompts as a user asking about their own existing codebase. Be specific"
     else:
         default_prompt = prompt
 

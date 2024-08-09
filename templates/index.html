@@ -5,23 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <title>Github CodeQuery</title>
+    <style>
+        #chatBody {
+            max-height: 70vh; /* Adjust this value as needed */
+            overflow-y: auto;
+        }
+        #promptForm {
+            display: none; /* Hide the prompt form by default */
+        }
+    </style>
 </head>
 <body>
     <div class="p-5">
-        <br/>
-        <br/>
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="container">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
         <div class="container-md">
-            <form id="repoForm" method="POST" action="/fetch-repo">
+            <form id="repoForm" method="POST" action="/fetch-repo" onsubmit="handleSubmit(event)">
                 <div class="mb-3">
                     <label for="linkInput" class="form-label">Enter Github Project Link (must be public)</label>
                     <input type="url" class="form-control" id="linkInput" name="repoURL" placeholder="https://public-github-repo.com" required>
                     <br/>
-                    <button type="submit" class="btn btn-primary">Fetch Repo</button>
+                    <button type="submit" class="btn btn-primary" id="fetchButton">Fetch Repo</button>
+                    <button type="button" class="btn btn-secondary" id="resetButton" style="display: none;" onclick="handleReset()">Reset</button>
                 </div>
             </form>        
         </div>
-        <div class="container-md">
-            <form id="promptForm" method="POST" action="javascript:void(0);" onsubmit="submitPrompt()">
+        <div class="container-md" id="promptForm">
+            <form id="promptFormInner" method="POST" action="javascript:void(0);" onsubmit="submitPrompt()">
                 <select id="promptSelect" class="form-select" aria-label="Default select example" onchange="showCustomPrompt()">
                     <option selected>Select prompt or "custom prompt" to use your own</option>
                     <!-- Options will be dynamically generated -->
@@ -40,17 +62,93 @@
                 <div class="card-header">
                     Chatbot
                 </div>
-                <div class="card-body" id="chatBody" style="height: 300px; overflow-y: scroll;">
+                <div class="card-body" id="chatBody">
                     <!-- Chat messages will go here -->
                 </div>
             </div>
         </div>
-        <br/>
-        <br/>
-        <br/>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
+        function handleSubmit(event) {
+            event.preventDefault(); // Prevent the default form submission
+
+            var formData = new FormData(event.target);
+
+            // Clear repo if one exists before downloading a new one
+            fetch('/clear-repo', {
+                method: 'POST'
+            }).then(() => {
+                return fetch('/fetch-repo', {
+                    method: 'POST',
+                    body: formData
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                console.log('Success:', data.message);
+
+                // Update the UI after successful fetch
+                var linkInput = document.getElementById('linkInput');
+                var fetchButton = document.getElementById('fetchButton');
+                var resetButton = document.getElementById('resetButton');
+                var promptForm = document.getElementById('promptForm');
+
+                linkInput.disabled = true;
+                fetchButton.style.display = 'none';
+                resetButton.style.display = 'inline-block';
+                promptForm.style.display = 'block'; // Show the prompt form
+
+                // Display flash messages without reloading
+                displayFlashMessage(data.message, 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+
+                // Optionally handle errors and update the UI if needed
+                displayFlashMessage(error.message, 'error');
+            });
+        }
+
+        function handleReset() {
+            fetch('/clear-repo', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                console.log('Success:', data.message);
+
+                // Reset the UI
+                var linkInput = document.getElementById('linkInput');
+                var fetchButton = document.getElementById('fetchButton');
+                var resetButton = document.getElementById('resetButton');
+                var promptForm = document.getElementById('promptForm');
+
+                linkInput.disabled = false;
+                linkInput.value = '';
+                fetchButton.style.display = 'inline-block';
+                resetButton.style.display = 'none';
+                promptForm.style.display = 'none'; // Hide the prompt form
+
+                // Display flash messages without reloading
+                displayFlashMessage(data.message, 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+
+                // Optionally handle errors and update the UI if needed
+                displayFlashMessage(error.message, 'error');
+            });
+        }
+
         function showCustomPrompt() {
             var selectElement = document.getElementById('promptSelect');
             var customPromptDiv = document.getElementById('customPromptDiv');
@@ -127,6 +225,23 @@
             customOption.textContent = 'Custom Prompt';
             selectElement.appendChild(customOption);
         });
+
+        function displayFlashMessage(message, category) {
+            var flashMessageContainer = document.createElement('div');
+            flashMessageContainer.className = `alert alert-${category} alert-dismissible fade show`;
+            flashMessageContainer.role = 'alert';
+            flashMessageContainer.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            document.body.insertBefore(flashMessageContainer, document.body.firstChild);
+
+            // Automatically remove the flash message after 5 seconds
+            setTimeout(() => {
+                flashMessageContainer.classList.remove('show');
+                flashMessageContainer.addEventListener('transitionend', () => flashMessageContainer.remove());
+            }, 5000);
+        }
     </script>
 </body>
 </html>
