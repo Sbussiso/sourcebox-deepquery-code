@@ -23,5 +23,7 @@ def perform_query(query):
         print(f"Error during similarity search: {e}")
 
 if __name__ == "__main__":
-    query = "encryption file process"
-    print(perform_query(query))
+    query = "where is the database being used"
+    response = perform_query(query)
+    for key, value in response.items():
+        print(f"{key}: {value}")

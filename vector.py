@@ -22,14 +22,27 @@ def project_to_vector():
 
     db = DeepLake(dataset_path="./my_deeplake/", embedding=embedding_function, overwrite=True)
 
+    # Define allowed file extensions
+    allowed_extensions = allowed_extensions = {
+    ".py", ".txt", ".csv", ".json", ".md", ".html", ".xml", ".yaml", ".yml", ".pdf",
+    ".js", ".docx", ".xlsx", "Dockerfile", "Procfile", ".gitignore",
+    ".java", ".rb", ".go", ".sh", ".php", ".cs", ".cpp", ".c", ".ts", ".swift", ".kt", ".rs", ".r", ".scala", ".pl", ".sql"
+    }
+
     for root, dirs, files in os.walk(repo_fetch_dir):
         for filename in files:
             file_path = os.path.join(root, filename)
+            file_extension = os.path.splitext(filename)[1]
+            
+            # Skip files that don't have an allowed extension
+            if file_extension not in allowed_extensions:
+                continue
+            
             if os.path.isfile(file_path):
                 try:
                     loader = TextLoader(file_path)
                     documents = loader.load()
-                    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+                    text_splitter = CharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
                     docs = text_splitter.split_documents(documents)
                 except Exception as e:
                     failed_files.append(file_path)

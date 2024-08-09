@@ -20,8 +20,9 @@ def generate_suggestions(prompt):
                                         You are a Prompt Generator. 
                                         You create the most relevent prompts to the data you are given
                                         Your response must be in the following format for regex processing:
-                                        -- the first prompt --;
-                                        -- the second prompt --;
+         
+                                        -- where is my database being used and referenced? --;
+                                        -- where is encryption used in my code? --;
                                         -- the third prompt --;
                                         -- the fourth prompt --;
                                         -- the fith prompt --;

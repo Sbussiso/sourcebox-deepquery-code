@@ -10,8 +10,53 @@
             max-height: 70vh; /* Adjust this value as needed */
             overflow-y: auto;
         }
-        #promptForm {
-            display: none; /* Hide the prompt form by default */
+        #promptForm, #chatbotDisplay {
+            display: none; /* Hide the prompt form and chatbot area by default */
+        }
+        #loadingSpinner {
+            display: none; /* Hide the spinner by default */
+        }
+        /* Toggle Switch Styling */
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-checkbox {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-label {
+            position: absolute;
+            cursor: pointer;
+            background-color: #ccc;
+            border-radius: 34px;
+            width: 100%;
+            height: 100%;
+            transition: background-color 0.2s;
+        }
+
+        .toggle-label::before {
+            content: "";
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            left: 4px;
+            bottom: 4px;
+            transition: transform 0.2s;
+        }
+
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #4caf50;
+        }
+
+        .toggle-checkbox:checked + .toggle-label::before {
+            transform: translateX(26px);
         }
     </style>
 </head>
@@ -38,6 +83,9 @@
                     <input type="url" class="form-control" id="linkInput" name="repoURL" placeholder="https://public-github-repo.com" required>
                     <br/>
                     <button type="submit" class="btn btn-primary" id="fetchButton">Fetch Repo</button>
+                    <div class="spinner-border text-primary" role="status" id="loadingSpinner">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                     <button type="button" class="btn btn-secondary" id="resetButton" style="display: none;" onclick="handleReset()">Reset</button>
                 </div>
             </form>        
@@ -57,7 +105,14 @@
             </form>
         </div>
         <!-- Chatbot body -->
-        <div class="container mt-5">
+        <div class="container mt-5" id="chatbotDisplay">
+            <!-- Toggle Switch -->
+            <div class="toggle-switch">
+                <input type="checkbox" id="toggle" class="toggle-checkbox">
+                <label for="toggle" class="toggle-label"></label>
+            </div>
+            <p>Chat Model</p>
+            <br/>
             <div class="card">
                 <div class="card-header">
                     Chatbot
@@ -74,6 +129,14 @@
             event.preventDefault(); // Prevent the default form submission
 
             var formData = new FormData(event.target);
+
+            var fetchButton = document.getElementById('fetchButton');
+            var loadingSpinner = document.getElementById('loadingSpinner');
+            var resetButton = document.getElementById('resetButton');
+
+            // Show the spinner and hide the fetch button
+            fetchButton.style.display = 'none';
+            loadingSpinner.style.display = 'inline-block';
 
             // Clear repo if one exists before downloading a new one
             fetch('/clear-repo', {
@@ -94,20 +157,24 @@
 
                 // Update the UI after successful fetch
                 var linkInput = document.getElementById('linkInput');
-                var fetchButton = document.getElementById('fetchButton');
-                var resetButton = document.getElementById('resetButton');
                 var promptForm = document.getElementById('promptForm');
+                var chatbotDisplay = document.getElementById('chatbotDisplay');
 
                 linkInput.disabled = true;
-                fetchButton.style.display = 'none';
+                loadingSpinner.style.display = 'none';
                 resetButton.style.display = 'inline-block';
                 promptForm.style.display = 'block'; // Show the prompt form
+                chatbotDisplay.style.display = 'block'; // Show the chatbot area
 
                 // Display flash messages without reloading
                 displayFlashMessage(data.message, 'success');
             })
             .catch(error => {
                 console.error('Error:', error);
+
+                // Hide spinner and show fetch button again if there is an error
+                loadingSpinner.style.display = 'none';
+                fetchButton.style.display = 'inline-block';
 
                 // Optionally handle errors and update the UI if needed
                 displayFlashMessage(error.message, 'error');
@@ -131,12 +198,14 @@
                 var fetchButton = document.getElementById('fetchButton');
                 var resetButton = document.getElementById('resetButton');
                 var promptForm = document.getElementById('promptForm');
+                var chatbotDisplay = document.getElementById('chatbotDisplay');
 
                 linkInput.disabled = false;
                 linkInput.value = '';
                 fetchButton.style.display = 'inline-block';
                 resetButton.style.display = 'none';
                 promptForm.style.display = 'none'; // Hide the prompt form
+                chatbotDisplay.style.display = 'none'; // Hide the chatbot area
 
                 // Display flash messages without reloading
                 displayFlashMessage(data.message, 'success');
@@ -171,6 +240,19 @@
             }
         }
 
+        function formatDocument(docContent, docNumber) {
+            return `
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <strong>Document ${docNumber}</strong>
+                    </div>
+                    <div class="card-body">
+                        <pre>${docContent}</pre>
+                    </div>
+                </div>
+            `;
+        }
+
         function submitPrompt() {
             setQueryVector();
             var queryVector = document.getElementById('queryVector').value;
@@ -189,12 +271,12 @@
                 var chatBody = document.getElementById('chatBody');
                 chatBody.innerHTML = ''; // Clear previous messages
                 if (data.results) {
+                    let formattedResults = '';
+                    let docNumber = 1;
                     for (const [key, value] of Object.entries(data.results)) {
-                        var messageElement = document.createElement('div');
-                        messageElement.className = 'mb-2';
-                        messageElement.innerHTML = `<strong>${key}:</strong> ${value}`;
-                        chatBody.appendChild(messageElement);
+                        formattedResults += formatDocument(value, docNumber++);
                     }
+                    chatBody.innerHTML = formattedResults;
                 } else if (data.error) {
                     var errorElement = document.createElement('div');
                     errorElement.className = 'mb-2 text-danger';

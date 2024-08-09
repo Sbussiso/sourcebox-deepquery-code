@@ -27,6 +27,7 @@ def hello():
         suggestions = generate_suggestions(prompt)
     return render_template('index.html', suggestions=suggestions)
 
+#fetch repo from github using gitpython
 @app.route('/fetch-repo', methods=['POST'])
 def fetch_repo():
     try:
@@ -108,6 +109,7 @@ def clear_repo():
     except Exception as e:
         logging.error(f"Server Error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/query-vector', methods=['POST'])
 def query_vector():
