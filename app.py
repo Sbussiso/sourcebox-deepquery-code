@@ -54,15 +54,30 @@ def before_request():
 
 
 
-
 @app.route('/')
 def hello():
+    codepacks = []
+    if 'access_token' in session:
+        token = session.get('access_token')
+        headers = {'Authorization': f'Bearer {token}'}
+        try:
+            response = requests.get(f"{API_URL}/packman/code/list_code_packs", headers=headers)
+            if response.status_code == 200:
+                codepacks = response.json()
+            else:
+                logger.error(f"Failed to fetch codepacks: {response.text}")
+                flash('Failed to fetch packs', 'danger')
+        except requests.RequestException as e:
+            logger.error(f"Error fetching codepacks: {e}")
+            flash('Error fetching codepacks', 'danger')
+
     if disable_prompt_suggestions:
         suggestions = None
     else:
         prompt = None  # using default response
         suggestions = generate_suggestions(prompt)
-    return render_template('index.html', suggestions=suggestions)
+    return render_template('index.html', suggestions=suggestions, codepacks=codepacks)
+
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -146,6 +161,7 @@ def fetch_repo():
     except Exception as e:
         logging.error(f"Server Error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/clear-repo', methods=['POST'])
 def clear_repo():

@@ -10,9 +10,6 @@
             max-height: 70vh; /* Adjust this value as needed */
             overflow-y: auto;
         }
-        #promptForm, #chatbotDisplay {
-            display: none; /* Hide the prompt form and chatbot area by default */
-        }
         #loadingSpinner {
             display: none; /* Hide the spinner by default */
         }
@@ -103,18 +100,25 @@
             <button type="button" id="sourceboxHome" class="btn btn-danger" onclick="goToHome()">Back to Home</button>
             <br/>
             <br/>
-            <form id="repoForm" method="POST" action="/fetch-repo" onsubmit="handleSubmit(event)">
-                <div class="mb-3">
-                    <label for="linkInput" class="form-label">Enter Github Project Link (must be public)</label>
-                    <input type="url" class="form-control" id="linkInput" name="repoURL" placeholder="https://public-github-repo.com" required>
-                    <br/>
-                    <button type="submit" class="btn btn-primary" id="fetchButton">Fetch Repo</button>
-                    <div class="spinner-border text-primary" role="status" id="loadingSpinner">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary" id="resetButton" style="display: none;" onclick="handleReset()">Reset</button>
+            <div class="p-3">
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                      Use Pack Data
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                      <li><a class="dropdown-item" href="#" onclick="selectPack('No Pack', '')">No Pack</a></li>
+                      {% if codepacks %}
+                        {% for codepack in codepacks %}
+                          <li><a class="dropdown-item" href="#" onclick="selectPack('{{ codepack.pack_name }}', '{{ codepack.id }}')">{{ codepack.pack_name }}</a></li>
+                        {% endfor %}
+                      {% else %}
+                        <li><a class="dropdown-item" href="#">No packs available</a></li>
+                      {% endif %}
+                    </ul>
                 </div>
-            </form>        
+                <br/>
+                <p id="selectedPack">No pack data being referenced :(</p>
+            </div> 
         </div>
         <!-- Chatbot body -->
         <div class="container mt-5" id="chatbotDisplay">
@@ -126,7 +130,7 @@
             <!--info icon-->
             <div style="display: inline-flex; align-items: center;">
                 <p style="margin-right: 8px;">Chat Model</p>
-                <span tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="right" data-bs-content="You can query your code directly using our vector search algorithm or pass your data to our model for interpretation (recomended)">
+                <span tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="right" data-bs-content="You can query your code directly using our vector search algorithm or pass your data to our model for interpretation (recommended)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-square" viewBox="0 0 16 16">
                         <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/>
                         <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
@@ -165,8 +169,7 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
-        //sourcebox home button
-        //sourcebox home button
+        // SourceBox home button
         function goToHome() {
             window.location.href = 'https://sourcebox-official-website-9f3f8ae82f0b.herokuapp.com/';
         }
@@ -179,131 +182,33 @@
             const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
             const popoverList = [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl));
         });
-    
-        function handleSubmit(event) {
-            event.preventDefault(); // Prevent the form from submitting in the default manner (reloading the page)
-    
-            var formData = new FormData(event.target); // Gather the form data into an object
-    
-            var fetchButton = document.getElementById('fetchButton'); // Reference to the "Fetch Repo" button
-            var loadingSpinner = document.getElementById('loadingSpinner'); // Reference to the loading spinner element
-            var resetButton = document.getElementById('resetButton'); // Reference to the "Reset" button
-    
-            // Show the loading spinner and hide the "Fetch Repo" button while processing
-            fetchButton.style.display = 'none';
-            loadingSpinner.style.display = 'inline-block';
-    
-            // Send a POST request to clear any existing repository data
-            fetch('/clear-repo', {
-                method: 'POST'
-            }).then(() => {
-                // After clearing the repo, send a POST request to fetch a new repository
-                return fetch('/fetch-repo', {
-                    method: 'POST',
-                    body: formData // Send the form data with the request
-                })
-            })
-            .then(response => response.json()) // Parse the JSON response
-            .then(data => {
-                if (data.error) {
-                    throw new Error(data.error); // If there's an error, throw it to be caught in the catch block
-                }
-    
-                console.log('Success:', data.message); // Log the success message for debugging purposes
-    
-                // Update the UI after successfully fetching the repository
-                var linkInput = document.getElementById('linkInput'); // Reference to the input field for the GitHub link
-                var promptForm = document.getElementById('promptForm'); // Reference to the form for submitting prompts
-                var chatbotDisplay = document.getElementById('chatbotDisplay'); // Reference to the chatbot display area
-    
-                // Disable the link input field and show the reset button, prompt form, and chatbot display
-                linkInput.disabled = true;
-                loadingSpinner.style.display = 'none';
-                resetButton.style.display = 'inline-block';
-                promptForm.style.display = 'block'; // Show the prompt form
-                chatbotDisplay.style.display = 'block'; // Show the chatbot area
-    
-                // Display a success flash message without reloading the page
-                displayFlashMessage(data.message, 'success');
-            })
-            .catch(error => {
-                console.error('Error:', error); // Log any errors that occur
-    
-                // If there's an error, hide the spinner and show the "Fetch Repo" button again
-                loadingSpinner.style.display = 'none';
-                fetchButton.style.display = 'inline-block';
-    
-                // Optionally, handle the error and update the UI to reflect that an error occurred
-                displayFlashMessage(error.message, 'error');
-            });
-        }
-    
-        function handleReset() {
-            // Send a POST request to clear the repository data
-            fetch('/clear-repo', {
-                method: 'POST'
-            })
-            .then(response => response.json()) // Parse the JSON response
-            .then(data => {
-                if (data.error) {
-                    throw new Error(data.error); // If there's an error, throw it to be caught in the catch block
-                }
-    
-                console.log('Success:', data.message); // Log the success message for debugging purposes
-    
-                // Reset the UI elements to their initial state
-                var linkInput = document.getElementById('linkInput'); // Reference to the input field for the GitHub link
-                var fetchButton = document.getElementById('fetchButton'); // Reference to the "Fetch Repo" button
-                var resetButton = document.getElementById('resetButton'); // Reference to the "Reset" button
-                var promptForm = document.getElementById('promptForm'); // Reference to the form for submitting prompts
-                var chatbotDisplay = document.getElementById('chatbotDisplay'); // Reference to the chatbot display area
-    
-                // Re-enable the link input field and hide the reset button, prompt form, and chatbot display
-                linkInput.disabled = false;
-                linkInput.value = ''; // Clear the input field
-                fetchButton.style.display = 'inline-block';
-                resetButton.style.display = 'none';
-                promptForm.style.display = 'none'; // Hide the prompt form
-                chatbotDisplay.style.display = 'none'; // Hide the chatbot area
-    
-                // Display a success flash message without reloading the page
-                displayFlashMessage(data.message, 'success');
-            })
-            .catch(error => {
-                console.error('Error:', error); // Log any errors that occur
-    
-                // Optionally, handle the error and update the UI to reflect that an error occurred
-                displayFlashMessage(error.message, 'error');
-            });
-        }
-    
+
+        // Handle custom prompt display based on selection
         function showCustomPrompt() {
-            var selectElement = document.getElementById('promptSelect'); // Reference to the select element for prompts
-            var customPromptDiv = document.getElementById('customPromptDiv'); // Reference to the div for custom prompts
-    
-            // Toggle the display of the custom prompt textarea based on the selected option
+            var selectElement = document.getElementById('promptSelect');
+            var customPromptDiv = document.getElementById('customPromptDiv');
             if (selectElement.value == 'Custom Prompt') {
                 customPromptDiv.style.display = 'block';
             } else {
                 customPromptDiv.style.display = 'none';
             }
         }
-    
+
+        // Set the query vector based on the selected or custom prompt
         function setQueryVector() {
-            var selectElement = document.getElementById('promptSelect'); // Reference to the select element for prompts
-            var customPromptTextarea = document.getElementById('customPromptTextarea'); // Reference to the textarea for custom prompts
-            var queryVectorInput = document.getElementById('queryVector'); // Reference to the hidden input field for the query vector
-    
-            // Set the query vector based on the selected prompt or custom prompt
+            var selectElement = document.getElementById('promptSelect');
+            var customPromptTextarea = document.getElementById('customPromptTextarea');
+            var queryVectorInput = document.getElementById('queryVector');
+
             if (selectElement.value == 'Custom Prompt') {
-                queryVectorInput.value = customPromptTextarea.value; // Use the custom prompt value
+                queryVectorInput.value = customPromptTextarea.value;
             } else {
-                queryVectorInput.value = selectElement.value; // Use the selected prompt value
+                queryVectorInput.value = selectElement.value;
             }
         }
-    
+
+        // Format the document content for display
         function formatDocument(docContent, docNumber) {
-            // Format the document content to be displayed in the chat area
             return `
                 <div class="card mb-3">
                     <div class="card-header">
@@ -315,63 +220,55 @@
                 </div>
             `;
         }
-    
+
+        // Submit the prompt to the appropriate route
         function submitPrompt() {
-            setQueryVector(); // Set the query vector before submitting
-            var queryVector = document.getElementById('queryVector').value; // Get the query vector value
-    
+            setQueryVector();
+            var queryVector = document.getElementById('queryVector').value;
+
             // Update conversation history with the query
             conversationHistory.push(`USER QUERY: ${queryVector}`);
-    
+
             // Determine the target route based on the state of the toggle switch
-            var toggleSwitch = document.getElementById('toggle'); // Reference to the toggle switch element
-            var targetRoute = toggleSwitch.checked ? '/chatbot' : '/query-vector'; // Choose the appropriate route
-    
-            var submitPromptButton = document.getElementById('submitPromptButton'); // Reference to the "Submit Prompt" button
-            var submitSpinner = document.getElementById('submitSpinner'); // Reference to the loading spinner for prompt submission
-    
+            var toggleSwitch = document.getElementById('toggle');
+            var targetRoute = toggleSwitch.checked ? '/chatbot' : '/query-vector';
+
+            var submitPromptButton = document.getElementById('submitPromptButton');
+            var submitSpinner = document.getElementById('submitSpinner');
+
             // Show the loading spinner and hide the "Submit Prompt" button while processing
             submitPromptButton.style.display = 'none';
             submitSpinner.style.display = 'inline-block';
-    
+
             // Prepare the conversation history and query to be sent
             var dataToSend = {
                 queryVector: queryVector,
-                history: conversationHistory.join('\n') // Join the conversation history into a single string
+                history: conversationHistory.join('\n')
             };
-    
+
             // Send a POST request to the appropriate route based on the toggle switch state
             fetch(targetRoute, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: new URLSearchParams(dataToSend) // Send the query vector and conversation history in the request body
+                body: new URLSearchParams(dataToSend)
             })
-            .then(response => response.json()) // Parse the JSON response
+            .then(response => response.json())
             .then(data => {
-                var chatBody = document.getElementById('chatBody'); // Reference to the chat body area
-    
+                var chatBody = document.getElementById('chatBody');
+
                 // If the toggle switch is on, display the chat results as plain text
                 if (toggleSwitch.checked) {
                     if (data.results) {
-                        // /chat route output formatting
                         function formatResponse(response) {
-                            // Replace code blocks
                             let formattedText = response.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
-    
-                            // Replace inline code
                             formattedText = formattedText.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-                            // Replace bold text
                             formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    
-                            // Replace line breaks
                             formattedText = formattedText.replace(/\n/g, '<br>');
-    
                             return formattedText;
                         }
-    
+
                         // Update conversation history with AI response
                         conversationHistory.push(`AI RESPONSE: ${data.results}`);
                         
@@ -386,16 +283,16 @@
                         errorElement.textContent = `Error: ${data.error}`;
                         chatBody.appendChild(errorElement);
                     }
-    
+
                 } else {
                     // If the toggle switch is off, format the results for display in the chat area
                     if (data.results) {
                         let formattedResults = '';
                         let docNumber = 1;
                         for (const [key, value] of Object.entries(data.results)) {
-                            formattedResults += formatDocument(value, docNumber++); // Format each document
+                            formattedResults += formatDocument(value, docNumber++);
                         }
-                        chatBody.innerHTML = formattedResults; // Display the formatted results
+                        chatBody.innerHTML = formattedResults;
                     } else if (data.error) {
                         var errorElement = document.createElement('div');
                         errorElement.className = 'mb-2 text-danger';
@@ -403,11 +300,11 @@
                         chatBody.appendChild(errorElement);
                     }
                 }
-    
+
                 chatBody.scrollTop = chatBody.scrollHeight; // Scroll to the bottom of the chat area to show the latest messages
             })
             .catch(error => {
-                console.error('Error:', error); // Log any errors that occur
+                console.error('Error:', error);
             })
             .finally(() => {
                 // Hide the spinner and show the "Submit Prompt" button again after processing
@@ -415,27 +312,27 @@
                 submitPromptButton.style.display = 'inline-block';
             });
         }
-    
+
         // Populate the select element with prompts from the backend when the page is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            var prompts = {{ suggestions | tojson }}; // Load the prompt suggestions from the backend
-            var selectElement = document.getElementById('promptSelect'); // Reference to the select element for prompts
+            var prompts = {{ suggestions | tojson }};
+            var selectElement = document.getElementById('promptSelect');
             prompts.forEach(function(prompt) {
-                var option = document.createElement('option'); // Create a new option element for each prompt
-                option.value = prompt; // Set the value of the option
-                option.textContent = prompt; // Set the display text of the option
-                selectElement.appendChild(option); // Add the option to the select element
+                var option = document.createElement('option');
+                option.value = prompt;
+                option.textContent = prompt;
+                selectElement.appendChild(option);
             });
-    
+
             // Add a custom prompt option explicitly at the end
             var customOption = document.createElement('option');
             customOption.value = 'Custom Prompt';
             customOption.textContent = 'Custom Prompt';
             selectElement.appendChild(customOption);
         });
-    
+
+        // Display flash messages
         function displayFlashMessage(message, category) {
-            // Create a flash message container with the appropriate alert class
             var flashMessageContainer = document.createElement('div');
             flashMessageContainer.className = `alert alert-${category} alert-dismissible fade show`;
             flashMessageContainer.role = 'alert';
@@ -443,15 +340,14 @@
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
-            document.body.insertBefore(flashMessageContainer, document.body.firstChild); // Insert the flash message at the top of the body
-    
+            document.body.insertBefore(flashMessageContainer, document.body.firstChild);
+
             // Automatically remove the flash message after 5 seconds
             setTimeout(() => {
                 flashMessageContainer.classList.remove('show');
                 flashMessageContainer.addEventListener('transitionend', () => flashMessageContainer.remove());
             }, 5000);
         }
-    
     </script>
 </body>
 </html>

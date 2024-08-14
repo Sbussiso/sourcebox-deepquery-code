@@ -5,7 +5,7 @@
     "htype": "embedding",
     "is_link": false,
     "is_sequence": false,
-    "length": 21,
+    "length": 27,
     "links": {
         "_embedding_shape": {
             "extend": "extend_shape",
