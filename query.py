@@ -22,6 +22,7 @@ def perform_query(query):
     except Exception as e:
         print(f"Error during similarity search: {e}")
 
+
 if __name__ == "__main__":
     query = "where is the database being used"
     response = perform_query(query)
