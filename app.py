@@ -183,7 +183,7 @@ def raw_vector_query():
         logger.debug("Sending payload to LLM API for raw vector query...")
 
         # Sending the payload to the LLM API, but only performing vector search
-        response = requests.post(f"{LLM_API_URL}/deepquery-raw", json=payload, headers=headers)
+        response = requests.post(f"{LLM_API_URL}/deepquery-code-raw", json=payload, headers=headers)
         logger.debug(f"LLM API raw vector query response status: {response.status_code}")
 
         if response.status_code == 200:
