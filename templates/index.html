@@ -231,8 +231,41 @@
             return formattedText;
         }
     
-        // Submit the prompt to the Flask backend and handle the response
+        // Format the raw vector search results to display documents more neatly
+        function formatRawResults(results) {
+            console.log("Formatting raw vector search results...");
+            let formattedResults = '';
+    
+            Object.keys(results).forEach(docKey => {
+                let content = results[docKey]
+                    .replace(/\n/g, '<br>')     // Ensure newlines are preserved with <br>
+                    .replace(/(.{100})/g, '$1<br>') // Break overly long lines after 100 characters
+                    .replace(/ {2}/g, '&nbsp;&nbsp;') // Preserve indentation by replacing spaces with non-breaking spaces
+                    .replace(/("""|''')/g, '<strong>$1</strong>') // Highlight triple quotes (both single and double)
+                    .replace(/"(.*?)"/g, '<code>"$1"</code>') // Highlight string literals with double quotes
+                    .replace(/'(.*?)'/g, '<code>\'$1\'</code>'); // Highlight string literals with single quotes
+    
+                formattedResults += `
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <strong>${docKey}:</strong>
+                            <pre style="white-space: pre-wrap; word-wrap: break-word;">${content}</pre>
+                        </div>
+                    </div>
+                `;
+            });
+    
+            return formattedResults;
+        }
+    
+        // Submit the prompt to the appropriate route based on the toggle switch state
         function submitPrompt() {
+            // Check if a pack or "No Pack" is selected
+            if (selectedPackId === null) {
+                alert('You must select a pack or choose "No Pack" before submitting.');
+                return;  // Stop the submission if no pack is selected
+            }
+    
             setQueryVector();
             const queryVector = document.getElementById('queryVector').value;
             console.log(`Submitting prompt: ${queryVector}`);
@@ -247,14 +280,20 @@
                 pack_id: selectedPackId
             };
     
+            console.log("Data being sent:", dataToSend);
+    
             // Show the loading spinner and hide the submit button during processing
             const submitPromptButton = document.getElementById('submitPromptButton');
             const submitSpinner = document.getElementById('submitSpinner');
             submitPromptButton.style.display = 'none';
             submitSpinner.style.display = 'inline-block';
     
-            console.log("Sending POST request to /chatbot...");
-            fetch('/chatbot', {
+            // Determine whether to use the chatbot route or the raw vector search route
+            const isChatModelOn = document.getElementById('toggle').checked;
+            const targetUrl = isChatModelOn ? '/chatbot' : '/raw-vector-query';
+    
+            console.log(`Sending POST request to ${targetUrl}...`);
+            fetch(targetUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -262,53 +301,65 @@
                 body: JSON.stringify(dataToSend)
             })
             .then(response => {
-                console.log(`Received response: ${response.status}`);
-                if (response.status === 401) {
-                    // Handle unauthorized access by redirecting to the login page
-                    alert('Your session has expired. Please log in again.');
-                    window.location.href = '/login';
-                } else if (!response.ok) {
-                    // Handle other non-200 responses
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                } else {
-                    return response.json();
-                }
+                console.log(`Received response status: ${response.status}`);
+                return response.json().then(data => ({ status: response.status, data }));
             })
-            .then(data => {
+            .then(({ status, data }) => {
                 const chatBody = document.getElementById('chatBody');
     
-                if (data.results) {
-                    console.log("AI results received, formatting...");
-                    // Format the AI response and append it to the chat body
-                    const formattedResponse = formatResponse(data.results);
-                    conversationHistory.push(`AI RESPONSE: ${data.results}`);
+                if (status === 200 && data.results) {
+                    console.log("Results received, formatting...");
     
-                    // Display user query and AI response
+                    let formattedResults;
+                    if (isChatModelOn) {
+                        formattedResults = formatResponse(data.results);
+                        conversationHistory.push(`AI RESPONSE: ${data.results}`);
+                    } else {
+                        formattedResults = formatRawResults(data.results);
+                    }
+    
                     const userQueryHtml = `<div class="card mb-2"><div class="card-body"><strong>User:</strong><br>${queryVector}</div></div>`;
-                    const aiResponseHtml = `<div class="card mb-2"><div class="card-body"><strong>AI:</strong><br>${formattedResponse}</div></div>`;
-                    chatBody.innerHTML += userQueryHtml + aiResponseHtml;
+                    const resultsHtml = `<div class="card mb-2"><div class="card-body"><strong>Results:</strong><br>${formattedResults}</div></div>`;
+                    chatBody.innerHTML += userQueryHtml + resultsHtml;
     
                     // Scroll to the bottom of the chat body
                     chatBody.scrollTop = chatBody.scrollHeight;
+    
                 } else if (data.error) {
                     console.error(`Error received from server: ${data.error}`);
-                    // Display the error message in the chat body
                     const errorElement = document.createElement('div');
                     errorElement.className = 'mb-2 text-danger';
                     errorElement.textContent = `Error: ${data.error}`;
                     chatBody.appendChild(errorElement);
+                } else {
+                    console.error('Unexpected response format:', data);
+                    const noResultsElement = document.createElement('div');
+                    noResultsElement.className = 'mb-2 text-warning';
+                    noResultsElement.textContent = `No results found for this query.`;
+                    chatBody.appendChild(noResultsElement);
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('Error occurred during fetch:', error);
+                const errorElement = document.createElement('div');
+                errorElement.className = 'mb-2 text-danger';
+                errorElement.textContent = `Error: ${error}`;
+                chatBody.appendChild(errorElement);
             })
             .finally(() => {
                 console.log("Request finished, resetting UI...");
-                // Hide the spinner and show the submit button again
                 submitSpinner.style.display = 'none';
                 submitPromptButton.style.display = 'inline-block';
             });
         }
+    
+        // Trigger prompt submission on pressing "Enter"
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && (document.activeElement.id === 'customPromptTextarea' || document.activeElement.id === 'promptSelect')) {
+                event.preventDefault();  // Prevent default form submission or page reload
+                submitPrompt();  // Submit the prompt
+            }
+        });
     
         // Populate the select element with prompts from the backend when the page is loaded
         document.addEventListener('DOMContentLoaded', function() {
@@ -349,6 +400,9 @@
             }, 5000);
         }
     </script>
+    
+    
+    
     
     
 </body>
