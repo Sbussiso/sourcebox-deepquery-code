@@ -171,169 +171,169 @@
     <script>
         // SourceBox home button
         function goToHome() {
+            console.log("Navigating to SourceBox home...");
             window.location.href = 'https://sourcebox-official-website-9f3f8ae82f0b.herokuapp.com/';
         }
-
-        // Global conversation history variable
-        var conversationHistory = [];
     
-        // Enable popovers
+        // Global conversation history and selected pack ID
+        let selectedPackId = null;
+        let conversationHistory = [];
+    
+        // Function to select a pack by name and ID
+        function selectPack(packName, packId) {
+            console.log(`Selected pack: ${packName}, ID: ${packId}`);
+            selectedPackId = packId;
+            document.getElementById('selectedPack').innerText = `Selected Pack: ${packName}`;
+        }
+    
+        // Enable popovers for additional information
         document.addEventListener('DOMContentLoaded', function () {
             const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
             const popoverList = [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl));
+            console.log("Popovers enabled");
         });
-
-        // Handle custom prompt display based on selection
+    
+        // Show or hide the custom prompt textarea based on the user's selection
         function showCustomPrompt() {
-            var selectElement = document.getElementById('promptSelect');
-            var customPromptDiv = document.getElementById('customPromptDiv');
-            if (selectElement.value == 'Custom Prompt') {
+            const selectElement = document.getElementById('promptSelect');
+            const customPromptDiv = document.getElementById('customPromptDiv');
+            if (selectElement.value === 'Custom Prompt') {
+                console.log("Custom prompt selected, showing textarea...");
                 customPromptDiv.style.display = 'block';
             } else {
+                console.log("Predefined prompt selected, hiding custom prompt textarea...");
                 customPromptDiv.style.display = 'none';
             }
         }
-
+    
         // Set the query vector based on the selected or custom prompt
         function setQueryVector() {
-            var selectElement = document.getElementById('promptSelect');
-            var customPromptTextarea = document.getElementById('customPromptTextarea');
-            var queryVectorInput = document.getElementById('queryVector');
-
-            if (selectElement.value == 'Custom Prompt') {
+            const selectElement = document.getElementById('promptSelect');
+            const customPromptTextarea = document.getElementById('customPromptTextarea');
+            const queryVectorInput = document.getElementById('queryVector');
+    
+            if (selectElement.value === 'Custom Prompt') {
                 queryVectorInput.value = customPromptTextarea.value;
+                console.log(`Custom prompt set: ${customPromptTextarea.value}`);
             } else {
                 queryVectorInput.value = selectElement.value;
+                console.log(`Predefined prompt set: ${selectElement.value}`);
             }
         }
-
-        // Format the document content for display
-        function formatDocument(docContent, docNumber) {
-            return `
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <strong>Document ${docNumber}</strong>
-                    </div>
-                    <div class="card-body">
-                        <pre>${docContent}</pre>
-                    </div>
-                </div>
-            `;
+    
+        // Format the AI response, handling code and text formatting
+        function formatResponse(response) {
+            console.log("Formatting AI response...");
+            let formattedText = response.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
+            formattedText = formattedText.replace(/`([^`]+)`/g, '<code>$1</code>');
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            formattedText = formattedText.replace(/\n/g, '<br>');
+            return formattedText;
         }
-
-        // Submit the prompt to the appropriate route
+    
+        // Submit the prompt to the Flask backend and handle the response
         function submitPrompt() {
             setQueryVector();
-            var queryVector = document.getElementById('queryVector').value;
-
-            // Update conversation history with the query
+            const queryVector = document.getElementById('queryVector').value;
+            console.log(`Submitting prompt: ${queryVector}`);
+    
+            // Update conversation history with the user's query
             conversationHistory.push(`USER QUERY: ${queryVector}`);
-
-            // Determine the target route based on the state of the toggle switch
-            var toggleSwitch = document.getElementById('toggle');
-            var targetRoute = toggleSwitch.checked ? '/chatbot' : '/query-vector';
-
-            var submitPromptButton = document.getElementById('submitPromptButton');
-            var submitSpinner = document.getElementById('submitSpinner');
-
-            // Show the loading spinner and hide the "Submit Prompt" button while processing
+    
+            // Prepare the data to be sent to the backend
+            const dataToSend = {
+                queryVector: queryVector,
+                history: conversationHistory.join('\n'),
+                pack_id: selectedPackId
+            };
+    
+            // Show the loading spinner and hide the submit button during processing
+            const submitPromptButton = document.getElementById('submitPromptButton');
+            const submitSpinner = document.getElementById('submitSpinner');
             submitPromptButton.style.display = 'none';
             submitSpinner.style.display = 'inline-block';
-
-            // Prepare the conversation history and query to be sent
-            var dataToSend = {
-                queryVector: queryVector,
-                history: conversationHistory.join('\n')
-            };
-
-            // Send a POST request to the appropriate route based on the toggle switch state
-            fetch(targetRoute, {
+    
+            console.log("Sending POST request to /chatbot...");
+            fetch('/chatbot', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
+                    'Content-Type': 'application/json'
                 },
-                body: new URLSearchParams(dataToSend)
+                body: JSON.stringify(dataToSend)
             })
-            .then(response => response.json())
-            .then(data => {
-                var chatBody = document.getElementById('chatBody');
-
-                // If the toggle switch is on, display the chat results as plain text
-                if (toggleSwitch.checked) {
-                    if (data.results) {
-                        function formatResponse(response) {
-                            let formattedText = response.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
-                            formattedText = formattedText.replace(/`([^`]+)`/g, '<code>$1</code>');
-                            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                            formattedText = formattedText.replace(/\n/g, '<br>');
-                            return formattedText;
-                        }
-
-                        // Update conversation history with AI response
-                        conversationHistory.push(`AI RESPONSE: ${data.results}`);
-                        
-                        // Display both the user query and the AI response in the chat body
-                        let userQueryHtml = `<div class="card mb-2"><div class="card-body"><strong>User:</strong><br>${queryVector}</div></div>`;
-                        let aiResponseHtml = `<div class="card mb-2"><div class="card-body"><strong>AI:</strong><br>${formatResponse(data.results)}</div></div>`;
-                        
-                        chatBody.innerHTML += userQueryHtml + aiResponseHtml; // Append the conversation to the chat body
-                    } else if (data.error) {
-                        var errorElement = document.createElement('div');
-                        errorElement.className = 'mb-2 text-danger';
-                        errorElement.textContent = `Error: ${data.error}`;
-                        chatBody.appendChild(errorElement);
-                    }
-
+            .then(response => {
+                console.log(`Received response: ${response.status}`);
+                if (response.status === 401) {
+                    // Handle unauthorized access by redirecting to the login page
+                    alert('Your session has expired. Please log in again.');
+                    window.location.href = '/login';
+                } else if (!response.ok) {
+                    // Handle other non-200 responses
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 } else {
-                    // If the toggle switch is off, format the results for display in the chat area
-                    if (data.results) {
-                        let formattedResults = '';
-                        let docNumber = 1;
-                        for (const [key, value] of Object.entries(data.results)) {
-                            formattedResults += formatDocument(value, docNumber++);
-                        }
-                        chatBody.innerHTML = formattedResults;
-                    } else if (data.error) {
-                        var errorElement = document.createElement('div');
-                        errorElement.className = 'mb-2 text-danger';
-                        errorElement.textContent = `Error: ${data.error}`;
-                        chatBody.appendChild(errorElement);
-                    }
+                    return response.json();
                 }
-
-                chatBody.scrollTop = chatBody.scrollHeight; // Scroll to the bottom of the chat area to show the latest messages
+            })
+            .then(data => {
+                const chatBody = document.getElementById('chatBody');
+    
+                if (data.results) {
+                    console.log("AI results received, formatting...");
+                    // Format the AI response and append it to the chat body
+                    const formattedResponse = formatResponse(data.results);
+                    conversationHistory.push(`AI RESPONSE: ${data.results}`);
+    
+                    // Display user query and AI response
+                    const userQueryHtml = `<div class="card mb-2"><div class="card-body"><strong>User:</strong><br>${queryVector}</div></div>`;
+                    const aiResponseHtml = `<div class="card mb-2"><div class="card-body"><strong>AI:</strong><br>${formattedResponse}</div></div>`;
+                    chatBody.innerHTML += userQueryHtml + aiResponseHtml;
+    
+                    // Scroll to the bottom of the chat body
+                    chatBody.scrollTop = chatBody.scrollHeight;
+                } else if (data.error) {
+                    console.error(`Error received from server: ${data.error}`);
+                    // Display the error message in the chat body
+                    const errorElement = document.createElement('div');
+                    errorElement.className = 'mb-2 text-danger';
+                    errorElement.textContent = `Error: ${data.error}`;
+                    chatBody.appendChild(errorElement);
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
             })
             .finally(() => {
-                // Hide the spinner and show the "Submit Prompt" button again after processing
+                console.log("Request finished, resetting UI...");
+                // Hide the spinner and show the submit button again
                 submitSpinner.style.display = 'none';
                 submitPromptButton.style.display = 'inline-block';
             });
         }
-
+    
         // Populate the select element with prompts from the backend when the page is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            var prompts = {{ suggestions | tojson }};
-            var selectElement = document.getElementById('promptSelect');
+            console.log("Page loaded, fetching prompts...");
+            const prompts = {{ suggestions | tojson }};
+            const selectElement = document.getElementById('promptSelect');
             prompts.forEach(function(prompt) {
-                var option = document.createElement('option');
+                const option = document.createElement('option');
                 option.value = prompt;
                 option.textContent = prompt;
                 selectElement.appendChild(option);
             });
-
-            // Add a custom prompt option explicitly at the end
-            var customOption = document.createElement('option');
+    
+            // Add a custom prompt option at the end
+            const customOption = document.createElement('option');
             customOption.value = 'Custom Prompt';
             customOption.textContent = 'Custom Prompt';
             selectElement.appendChild(customOption);
+            console.log("Prompts populated");
         });
-
-        // Display flash messages
+    
+        // Display flash messages on the page
         function displayFlashMessage(message, category) {
-            var flashMessageContainer = document.createElement('div');
+            console.log(`Displaying flash message: ${message}, category: ${category}`);
+            const flashMessageContainer = document.createElement('div');
             flashMessageContainer.className = `alert alert-${category} alert-dismissible fade show`;
             flashMessageContainer.role = 'alert';
             flashMessageContainer.innerHTML = `
@@ -341,7 +341,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
             document.body.insertBefore(flashMessageContainer, document.body.firstChild);
-
+    
             // Automatically remove the flash message after 5 seconds
             setTimeout(() => {
                 flashMessageContainer.classList.remove('show');
@@ -349,5 +349,7 @@
             }, 5000);
         }
     </script>
+    
+    
 </body>
 </html>

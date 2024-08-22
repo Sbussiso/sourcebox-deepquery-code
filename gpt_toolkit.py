@@ -1,7 +1,6 @@
 from openai import OpenAI
 from dotenv import load_dotenv
 import os, re
-from query import perform_query
 
 load_dotenv()
 
@@ -46,34 +45,6 @@ def generate_suggestions(prompt):
     # Print the results
     return matches
 
-
-#main chat and history model
-def chat(prompt, history):
-    
-    vector_results = perform_query(prompt)
-    
-    response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "system", "content": f"""
-                                        You are a helpful Code comprehention assistant. Assist the user with Code related prompts.
-                                        You must write full detailed answers showing your references
-                                        CONVERSATION HISTORY: {history}
-                                        USER PROMPT: {prompt}
-                                        VECTOR SEARCH RESULTS: {vector_results}
-
-                                        Response steps:
-                                        1. analyze VECTOR SEARCH RESULTS
-                                        2. analyze CONVERSATION HISTORY
-                                        3. analyze USER PROMPT
-                                        4. cross reference VECTOR SEARCH RESULTS, CONVERSATION HISTORY, and USER PROMPT To answer the USER PROMPT
-                                        """},
-
-        {"role": "user", "content": str(prompt)},
-    ]
-    )
-    message = response.choices[0].message.content
-    return message
 
 
 if __name__ == "__main__":

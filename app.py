@@ -1,40 +1,43 @@
 from flask import Flask, render_template, request, flash, redirect, url_for, jsonify, session
-from git import Repo
-import shutil
 import os
 import logging
-from vector import project_to_vector
-from dotenv import load_dotenv
-from gpt_toolkit import generate_suggestions, chat
-from query import perform_query
 import requests
+from dotenv import load_dotenv
+from gpt_toolkit import generate_suggestions
 
 load_dotenv()
 
-logging.basicConfig(level=logging.DEBUG,  # Set the logging level
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')  # Log format
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Replace with your actual secret key
-
-disable_prompt_suggestions = False  # toggle prompt suggestions
-
+app.secret_key = os.getenv('FLASK_SECRET_KEY')  # Secret key for session handling
+app.config['UPLOAD_FOLDER'] = 'uploads'
 API_URL = os.getenv('API_URL')
+LLM_API_URL = os.getenv('LLM_API_URL')
+disable_prompt_suggestions = False  # Toggle prompt suggestions
 
+# Utility functions
 def check_authentication():
+    logger.debug("Checking authentication status...")
     access_token = session.get('access_token')
     if access_token:
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(f"{API_URL}/user_history", headers=headers)
+            logger.debug(f"Authentication check response status: {response.status_code}")
             if response.status_code == 200:
                 return True
+            elif response.status_code == 401:
+                logger.error("Access token is invalid or expired.")
+                session.pop('access_token', None)
+                flash('Session expired, please login again', 'danger')
+                return False
             else:
                 logger.error(f"Authentication check failed: {response.text}")
                 session.pop('access_token', None)
-                flash('Session expired, please login again', 'danger')
+                flash('Authentication check failed, please login again.', 'danger')
                 return False
         except requests.RequestException as e:
             logger.error(f"Error during authentication check: {e}")
@@ -42,28 +45,34 @@ def check_authentication():
             session.pop('access_token', None)
             return False
     else:
-        flash('You need to login first', 'danger')
+        logger.debug("No access token found. User not authenticated.")
+        flash('You need to login first.', 'danger')
         return False
-
 
 @app.before_request
 def before_request():
-    if request.endpoint not in ('login', 'static'):
+    logger.debug(f"Before request: {request.endpoint}")
+    if request.endpoint not in ('login', 'register', 'static'):
         if not check_authentication():
             return redirect(url_for('login'))
 
-
-
 @app.route('/')
 def hello():
+    logger.debug("Serving the homepage...")
     codepacks = []
     if 'access_token' in session:
         token = session.get('access_token')
         headers = {'Authorization': f'Bearer {token}'}
         try:
             response = requests.get(f"{API_URL}/packman/code/list_code_packs", headers=headers)
+            logger.debug(f"List code packs response status: {response.status_code}")
             if response.status_code == 200:
                 codepacks = response.json()
+            elif response.status_code == 401:
+                logger.error("Token expired or invalid. Redirecting to login.")
+                flash("Your session has expired. Please log in again.", "danger")
+                session.pop('access_token', None)
+                return redirect(url_for('login'))
             else:
                 logger.error(f"Failed to fetch codepacks: {response.text}")
                 flash('Failed to fetch packs', 'danger')
@@ -71,31 +80,26 @@ def hello():
             logger.error(f"Error fetching codepacks: {e}")
             flash('Error fetching codepacks', 'danger')
 
-    if disable_prompt_suggestions:
-        suggestions = None
-    else:
-        prompt = None  # using default response
-        suggestions = generate_suggestions(prompt)
+    suggestions = None if disable_prompt_suggestions else generate_suggestions(None)
+    logger.debug(f"Returning homepage with {len(codepacks)} codepacks and suggestions enabled: {not disable_prompt_suggestions}")
     return render_template('index.html', suggestions=suggestions, codepacks=codepacks)
-
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+        logger.debug(f"Login attempt with email: {email}")
 
         try:
-            response = requests.post(f"{API_URL}/login", json={
-                'email': email,
-                'password': password
-            })
+            response = requests.post(f"{API_URL}/login", json={'email': email, 'password': password})
+            logger.debug(f"Login response status: {response.status_code}")
 
             if response.status_code == 200:
                 access_token = response.json().get('access_token')
                 session['access_token'] = access_token
                 flash('Logged in successfully!', 'success')
+                logger.debug("Login successful, redirecting to homepage...")
                 return redirect(url_for('hello'))
             else:
                 message = response.json().get('message', 'Login failed')
@@ -103,134 +107,100 @@ def login():
                 flash(message, 'danger')
         except requests.RequestException as e:
             logger.error(f"Error during login: {e}")
-            flash('Error during login', 'danger')
+            flash('Error during login.', 'danger')
 
     return render_template('login.html')
 
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    logger.debug("Redirecting to external registration page...")
     return redirect('https://sourcebox-official-website-9f3f8ae82f0b.herokuapp.com/sign_up')
 
 
-#fetch repo from github using gitpython
-@app.route('/fetch-repo', methods=['POST'])
-def fetch_repo():
-    try:
-        # Define the path to the directory
-        directory_path = 'repofetch'
-        logging.debug('Entered fetch_repo function')
-
-        # Check if the directory exists
-        if os.path.exists(directory_path) and os.path.isdir(directory_path):
-            logging.debug(f"The directory '{directory_path}' already exists.")
-            return jsonify({"error": "Directory already exists"}), 400
-
-        logging.debug(f"The directory '{directory_path}' does not exist.")
-        # Path to the directory
-        main_directory = os.getcwd()  # Use the current working directory as the main directory
-        repo_fetch_dir = os.path.join(main_directory, 'repofetch')
-
-        # Create the directory
-        os.makedirs(repo_fetch_dir, exist_ok=True)
-        logging.debug(f"Directory 'repofetch' created at: {repo_fetch_dir}")
-
-        # User input
-        repo_url = request.form.get('repoURL')
-        logging.debug(f"REPO URL: {repo_url}")
-
-        if not repo_url:
-            return jsonify({"error": "No repository URL provided"}), 400
-
-        # Fetch the GitHub repo
-        try:
-            repo = Repo.clone_from(repo_url, repo_fetch_dir)
-            logging.debug("Pulled repo from GitHub")
-        except Exception as e:
-            logging.error(f"Failed to fetch repository: {e}")
-            return jsonify({"error": str(e)}), 500
-
-        logging.debug("Pulled repo from GitHub")
-
-        # Vectorize the repo in repofetch and send to DeepLake
-        db = project_to_vector()
-        if not db:
-            return jsonify({"error": "Failed to process repository"}), 500
-
-        return jsonify({"message": "Repository successfully fetched and data laked"}), 200
-    except Exception as e:
-        logging.error(f"Server Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/clear-repo', methods=['POST'])
-def clear_repo():
-    try:
-        # Define the path to the directory
-        repo_directory_path = 'repofetch'
-        deeplake_directory_path = 'my_deeplake'
-
-        # Check if the repo directory exists
-        if os.path.exists(repo_directory_path) and os.path.isdir(repo_directory_path):
-            logging.debug(f"The directory '{repo_directory_path}' exists. deleting folder")
-            shutil.rmtree(repo_directory_path)
-            logging.debug(f"Directory 'repofetch' deleted")
-        else:
-            logging.debug(f"The directory '{repo_directory_path}' does not exist. No folder to delete")
-
-        # Check if the my_deeplake directory exists
-        if os.path.exists(deeplake_directory_path) and os.path.isdir(deeplake_directory_path):
-            logging.debug(f"The directory '{deeplake_directory_path}' exists. deleting folder")
-            shutil.rmtree(deeplake_directory_path)
-            logging.debug(f"Directory 'my_deeplake' deleted")
-        else:
-            logging.debug(f"The directory '{deeplake_directory_path}' does not exist. No folder to delete")
-
-        # delete processed files metadata
-        main_directory = os.getcwd()
-        file = os.path.join(main_directory, 'processed_files_metadata.json')
-        if os.path.exists(file):
-            os.remove(file)
-
-        return jsonify({"message": "Directory cleared"}), 200
-    except Exception as e:
-        logging.error(f"Server Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/query-vector', methods=['POST'])
-def query_vector():
-    try:
-        query = request.form.get("queryVector")
-        logging.debug(f"Query Vector: {query}")
-
-        results = perform_query(query)
-        return jsonify({"results": results}), 200
-    
-    except Exception as e:
-        logging.error(f"Error during similarity search: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-#chatbot
 @app.route('/chatbot', methods=['POST'])
 def chatbot_route():
-    # Get the vectorized query and conversation history from the form
-    query = request.form.get("queryVector")
-    history = request.form.get("history", "")  # Get the history, default to an empty string if not provided
+    # Expecting a JSON payload
+    data = request.json
+    query = data.get("queryVector")
+    history = data.get("history", "")
+    pack_id = data.get("pack_id", None)
 
-    logging.debug(f"Query Vector: {query}")
-    logging.debug(f"Conversation History: {history}")
-    
+    logger.debug(f"Received chatbot request with query: {query}, history: {history}, pack_id: {pack_id}")
+
     try:
-        # Pass both the query and history to the chat function
-        chat_results = chat(query, history)
-        logging.debug(f"CHAT RESULTS: {chat_results}")
+        payload = {"user_message": query, "history": history, "pack_id": pack_id}
+        access_token = session.get('access_token')
 
-        return jsonify({"results": chat_results}), 200
-    
+        if not access_token:
+            logger.error("No access token available. Redirecting to login.")
+            return redirect(url_for('login'))
+
+        # Ensure the token is present and well-formed
+        logger.debug(f"Access token before request: {access_token}")
+
+        headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+        logger.debug("Sending payload to LLM API...")
+
+        response = requests.post(f"{LLM_API_URL}/deepquery-code", json=payload, headers=headers)
+        logger.debug(f"LLM API response status: {response.status_code}")
+
+        if response.status_code == 200:
+            chat_results = response.json().get("message", "No response from LLM.")
+            logger.debug(f"Chat results: {chat_results}")
+            return jsonify({"results": chat_results}), 200
+        elif response.status_code == 401:
+            logger.error("Token expired or invalid. Redirecting to login.")
+            session.pop('access_token', None)
+            flash("Your session has expired. Please log in again.", "danger")
+            return redirect(url_for('login'))
+        else:
+            logger.error(f"Error from LLM API: {response.status_code} - {response.text}")
+            return jsonify({"error": "Error from LLM API"}), response.status_code
+
     except Exception as e:
-        logging.error(f"Error during similarity search: {e}")
+        logger.error(f"Error during chat forwarding: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
+@app.route('/raw-vector-query', methods=['POST'])
+def raw_vector_query():
+    data = request.json
+    query = data.get("queryVector")
+    pack_id = data.get("pack_id", None)
+
+    logger.debug(f"Received raw vector query with query: {query}, pack_id: {pack_id}")
+
+    try:
+        payload = {"user_message": query, "pack_id": pack_id}
+        access_token = session.get('access_token')
+
+        if not access_token:
+            logger.error("No access token available. Redirecting to login.")
+            return redirect(url_for('login'))
+
+        headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+        logger.debug("Sending payload to LLM API for raw vector query...")
+
+        # Sending the payload to the LLM API, but only performing vector search
+        response = requests.post(f"{LLM_API_URL}/deepquery-raw", json=payload, headers=headers)
+        logger.debug(f"LLM API raw vector query response status: {response.status_code}")
+
+        if response.status_code == 200:
+            vector_results = response.json().get("vector_results", {})
+            logger.debug(f"Vector results: {vector_results}")
+            return jsonify({"results": vector_results}), 200
+        elif response.status_code == 401:
+            logger.error("Token expired or invalid. Redirecting to login.")
+            session.pop('access_token', None)
+            flash("Your session has expired. Please log in again.", "danger")
+            return redirect(url_for('login'))
+        else:
+            logger.error(f"Error from LLM API: {response.status_code} - {response.text}")
+            return jsonify({"error": "Error from LLM API"}), response.status_code
+
+    except Exception as e:
+        logger.error(f"Error during raw vector query: {e}")
         return jsonify({"error": str(e)}), 500
 
 
