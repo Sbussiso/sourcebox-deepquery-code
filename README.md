@@ -11,6 +11,10 @@
 
 <br/>
 
+> Learn more about DeepQuery here: (link to deepquery documentation)
+
+<br/>
+
 ### How it works
 
 > DeepQuery Code connects directly to your structured code packs, allowing you to ask complex questions and get relevant responses based on the content within these packs. By utilizing a vector search algorithm, DeepQuery Code identifies and retrieves the most relevent code points, helping you find exactly what you’re looking for with minimal effort.
